@@ -1,0 +1,85 @@
+---
+title: "Plots DS"
+output: html_notebook
+---
+
+
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(ggbeeswarm)
+library(viridis)
+library(corrplot)
+library(tidyr)
+library(GenomicRanges)
+library(GenomicFeatures)
+```
+Get functions
+```{r}
+source("functions_ds.R")
+```
+Read gtf
+```{r}
+  txdb <- makeTxDbFromGFF("C:/Users/kerst/Desktop/MP/Task5/input/splicing_variants.gtf")
+```
+
+Read ground truth info
+```{r}
+info <- read_info("C:/Users/kerst/Desktop/MP/Task5/input/sim_tx_info.txt")
+table(info$type)
+```
+Read ground truth annotation
+```{r}
+annotation <- read_annotation("C:/Users/kerst/Desktop/MP/Task5/input/event_annotation.tsv")
+```
+
+Read cash outputs
+```{r}
+cash <- read_ds("C:/Users/kerst/Desktop/MP/Task5/CASH","cash")
+cash_counts <- count_ds(cash,"cash",info,annotation,txdb)
+table(cash$type)
+```
+
+Simulate outputs
+```{r}
+pool <- short_data[diff_spliced==T][1:1000]$transcript_id
+tool_names <- paste0("tool_",1:10)
+results <- lapply(tool_names,function(x){
+  return(sample(pool,500))
+})
+names(results)<-tool_names
+```
+Calculate overlaps
+```{r}
+overlaps <- function(sets){
+  matrix <- sapply(sets, function(x){
+    vector <- sapply(sets,function(y){
+      return(length(intersect(x,y))/length(union(x,y)))
+    })
+  return(vector)  
+  })
+  colnames(matrix)<-names(sets)
+  rownames(matrix)<-names(sets)
+
+  return(matrix)
+}
+```
+```{r}
+matrix <- overlaps(results)
+```
+
+```{r}
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(matrix,
+         method="square",
+         shade.col=NA, 
+         tl.col="black", 
+         tl.srt=45,
+         col=col(200), 
+         addCoef.col="black", 
+         order="AOE", 
+         cl.lim = c(0, 1)
+         )
+```
+
