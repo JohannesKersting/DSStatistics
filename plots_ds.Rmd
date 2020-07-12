@@ -27,6 +27,7 @@ Read gtf
 Read ground truth info
 ```{r}
 info <- read_info("C:/Users/kerst/Desktop/MP/Task5/input/sim_tx_info.txt")
+info[type=="template"]$diff_spliced <- F
 table(info$type)
 ```
 Read ground truth annotation
@@ -34,11 +35,78 @@ Read ground truth annotation
 annotation <- read_annotation("C:/Users/kerst/Desktop/MP/Task5/input/event_annotation.tsv")
 ```
 
+Load introns (because evntpointer uses intronic coordinates :-/ )
+```{r}
+annotation <- load_introns(annotation,txdb)
+```
+
+
 Read cash outputs
 ```{r}
 cash <- read_ds("C:/Users/kerst/Desktop/MP/Task5/CASH","cash")
 cash_counts <- count_ds(cash,"cash",info,annotation,txdb)
-table(cash$type)
+print("Type table:")
+table(cash$type,cash$real_type)
+print("Type table: diff spliced")
+table(cash[gene_level==T]$type,cash[gene_level==T]$real_type)
+print("Type table: location correct")
+table(cash[location_level==T]$type,cash[location_level==T]$real_type)
+```
+Read eventpointer outputs
+```{r}
+source("functions_ds.R")
+eventpointer <- read_ds("C:/Users/kerst/Desktop/MP/Task5/EventPointer","eventpointer")
+eventpointer_counts <- count_ds(eventpointer,"eventpointer",info,annotation,txdb)
+print("Type table:")
+table(eventpointer$type,eventpointer$real_type)
+print("Type table: diff spliced")
+table(eventpointer[gene_level==T]$type,eventpointer[gene_level==T]$real_type)
+print("Type table: location correct")
+table(eventpointer[location_level==T]$type,eventpointer[location_level==T]$real_type)
+```
+Read aspli
+```{r}
+source("functions_ds.R")
+aspli<- read_ds("C:/Users/kerst/Desktop/MP/Task5/ASpli_du","aspli")
+aspli <- pre_filter_type(aspli,info)
+aspli_counts <- count_ds(aspli,"aspli",info,annotation,txdb)
+print("Type table")
+table(aspli$type,aspli$real_type)
+print("Type table: diff spliced")
+table(aspli[gene_level==T]$type,aspli[gene_level==T]$real_type)
+print("Type table: location correct")
+table(aspli[location_level==T]$type,aspli[location_level==T]$real_type)
+
+```
+Read majiq
+```{r}
+source("functions_ds.R")
+majiq<- read_ds("C:/Users/kerst/Desktop/MP/Task5/majiq_test_10mln_3vs3_deltapsi","majiq")
+majiq <- pre_filter_type(majiq,info)
+majiq_counts <- count_ds(majiq,"majiq",info,annotation,txdb)
+table(majiq$type,majiq$real_type)
+print("Type table: diff spliced")
+table(majiq[gene_level==T]$type,majiq[gene_level==T]$real_type)
+print("Type table: location correct")
+table(majiq[location_level==T]$type,majiq[location_level==T]$real_type)
+
+```
+Read spladder
+```{r}
+source("functions_ds.R")
+spladder<- read_ds("C:/Users/kerst/Desktop/MP/Task5/spladder/testing","spladder")
+spladder <- pre_filter_type(spladder,info)
+spladder_counts <- count_ds(spladder,"spladder",info,annotation,txdb)
+print("Type table")
+table(spladder$type,spladder$real_type)
+print("Type table: diff spliced")
+table(spladder[gene_level==T]$type,spladder[gene_level==T]$real_type)
+```
+Read jsplice
+```{r}
+source("functions_ds.R")
+jsplice <- read_ds("C:/Users/kerst/Desktop/MP/Task5/jSplice","jsplice")
+table(jsplice$type)
 ```
 
 Simulate outputs
