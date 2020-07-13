@@ -91,17 +91,36 @@ print("Type table: location correct")
 table(majiq[location_level==T]$type,majiq[location_level==T]$real_type)
 
 ```
+
 Read spladder
 ```{r}
 source("functions_ds.R")
-spladder<- read_ds("C:/Users/kerst/Desktop/MP/Task5/spladder/testing","spladder")
-spladder <- pre_filter_type(spladder,info)
-spladder_counts <- count_ds(spladder,"spladder",info,annotation,txdb)
+spladder<- read_ds("C:/Users/kerst/Desktop/MP/Task5/spladder","spladder")
+spladder<- pre_filter_type(spladder,info)
+spladder_counts<- count_ds(spladder,"spladder",info,annotation,txdb)
 print("Type table")
 table(spladder$type,spladder$real_type)
 print("Type table: diff spliced")
 table(spladder[gene_level==T]$type,spladder[gene_level==T]$real_type)
+print("Type table: location correct")
+table(spladder[location_level==T]$type,spladder[location_level==T]$real_type)
 ```
+
+Read edger
+```{r}
+source("functions_ds.R")
+edger <- read_ds("C:/Users/kerst/Desktop/MP/Task5/edgeR","edger")
+edger_counts <- count_ds(edger,"edger",info)
+```
+
+Read dexseq
+```{r}
+source("functions_ds.R")
+dexseq <- read_ds("C:/Users/kerst/Desktop/MP/Task5/DEXseq/dexseq_test_10mln_3vs3","dexseq")
+```
+
+
+
 Read jsplice
 ```{r}
 source("functions_ds.R")

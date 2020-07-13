@@ -335,10 +335,13 @@ read_ds <- function(path,method){
     return(read_majiq(path))
   }
   if(method=="spladder"){
-    return(read_spladder(path))
+    return(read_spladder_locations(path))
   }
   if(method == "jsplice"){
     return(read_jsplice(path))
+  }
+  if(method == "edger"){
+    return(read_edger(path))
   }
   stop(paste0("Method '",method,"' is not supported!"))
 }
@@ -361,6 +364,9 @@ count_ds <- function(data,method,...){
   }
   if(method == "jsplice"){
     return(count_jsplice(data...))
+  }
+  if(method=="edger"){
+    return(count_edger(data,...))
   }
   stop(paste0("Method '",method,"' is not supported!"))
 }
@@ -526,9 +532,10 @@ count_cash <- function(data,true_data,annotation,txdb){
   a5_ranges <- NULL
   
   
+  unique_data <- unique(data[,.(gene_id,gene_level,type_level,type,location_level,start,end)])
   counts_location$level <- "location"
-  counts_location$tp <- sum(data$location_level)
-  counts_location$fp <- sum(data$location_level==F)
+  counts_location$tp <- sum(unique_data$location_level==T)
+  counts_location$fp <- sum(unique_data$location_level==F)
   counts_location$fn  <- sum(true_data$diff_spliced)-counts_location$tp
   counts <- rbind(counts,counts_location)
   
@@ -675,9 +682,10 @@ count_eventpointer <- function(data,true_data,annotation,txdb){
   ale_data[,location_level:=(start(ale_ranges)==start)|(end(ale_ranges)==end)]
   data[type_level==T&type=="ale",location_level:=ale_data$location_level]
   
+  unique_data <- unique(data[,.(gene_id,gene_level,type_level,type,location_level,start,end)])
   counts_location$level <- "location"
-  counts_location$tp <- sum(data$location_level)
-  counts_location$fp <- sum(data$location_level==F)
+  counts_location$tp <- sum(unique_data$location_level==T)
+  counts_location$fp <- sum(unique_data$location_level==F)
   counts_location$fn  <- sum(true_data$diff_spliced)-counts_location$tp
   counts <- rbind(counts,counts_location)
   
@@ -789,9 +797,10 @@ count_aspli <- function(data,true_data,annotation,txdb){
   a5_data <- NULL
   a5_ranges <- NULL
   
+  unique_data <-unique(data[,.(gene_id,gene_level,type_level,type,location_level,start,end)])
   counts_location$level <- "location"
-  counts_location$tp <- sum(data$location_level==T)
-  counts_location$fp <- sum(data$location_level==F)
+  counts_location$tp <- sum(unique_data$location_level==T)
+  counts_location$fp <- sum(unique_data$location_level==F)
   counts_location$fn  <- sum(true_data$diff_spliced)-counts_location$tp
   counts <- rbind(counts,counts_location)
 
@@ -799,12 +808,6 @@ count_aspli <- function(data,true_data,annotation,txdb){
   return(counts)
 }
 
-############# dexseq ################
-read_dexseq <- function(path){
-  print(paste("Reading dexseq output:",path))
-  data <- fread(path,select = "groupID")
-  return(data)
-}
 
 ######### majiq ######################
 read_majiq <- function(path){
@@ -813,7 +816,7 @@ read_majiq <- function(path){
     stop("No input file found!")
   }
   path <-file.path(path,file)
-  print(paste("Reading aspli output:",path))
+  print(paste("Reading majiq output:",path))
   data <- fread(path)
 
   setnames(data,"Gene ID","gene_id")
@@ -982,7 +985,7 @@ count_majiq <- function(data,true_data,annotation,txdb){
   es_data <- NULL
   es_ranges <- NULL
   
-  unique_data <-   unique_data <- unique(data[,.(gene_id,gene_level,type_level,type,location_level)])
+  unique_data <-  unique(data[,.(gene_id,gene_level,type_level,type,location_level,start,end)])
   counts_location$level <- "location"
   counts_location$tp <- sum(unique_data$location_level==T)
   counts_location$fp <- sum(unique_data$location_level==F)
@@ -1009,6 +1012,109 @@ read_spladder <- function(path){
   return(data)
 }
 
+read_spladder_locations <- function(path){
+  map <- list("mutex_exons"="mee","exon_skip"="es","intron_retention"="ir","mult_exon_skip"="mes","alt_3prime"="a3","alt_5prime"="a5")
+  data <- rbindlist(lapply(names(map),function(type){
+    file <- list.files(path,pattern = paste0("merge_graphs_",type,"_C3.confirmed.txt.gz$"))
+    if(length(file)!=1){
+      stop(paste0("No input file found for type: ",type))
+    }
+    print(paste("Reading spladder output:",file.path(path,file)))
+    return(read_spladder_type(file.path(path,file),map[[type]]))
+  }),fill = T)
+  return(data)
+}
+
+read_spladder_type <- function(path,type){
+  if(type=="es"){
+    return(read_spladder_es(path))
+  }
+  if(type=="ir"){
+    return(read_spladder_ir(path))
+  }
+  if(type=="mes"){
+    return(read_spladder_mes(path))
+  }
+  if(type=="mee"){
+    return(read_spladder_mee(path))
+  }
+  if(type=="a5"){
+    return(read_spladder_a5(path))
+  }
+  if(type=="a3"){
+    return(read_spladder_a3(path))
+  }
+  sub_data <- fread(path)
+  sub_data[,type:=type]
+  return(sub_data[,.(gene_id=gene_name,type)])
+}
+
+read_spladder_es <- function(path){
+  sub_data <- fread(path)
+  sub_data[,type:="es"]
+  sub_data[,start:=as.integer(exon_start)]
+  sub_data[,end:=as.integer(exon_end)]
+  return(sub_data[,.(gene_id=gene_name,type,start,end)])
+}
+
+read_spladder_ir <- function(path){
+  sub_data <- fread(path)
+  sub_data[,type:="ir"]
+  sub_data[,start:=as.integer(intron_start)]
+  sub_data[,end:=as.integer(intron_end)]
+  return(sub_data[,.(gene_id=gene_name,type,start,end)])
+}
+
+read_spladder_mes <- function(path){
+  sub_data <- fread(path)
+  sub_data[,type:="mes"]
+  sub_data[,start:=as.integer(exon_pre_end)]
+  sub_data[,end:=as.integer(exon_aft_start)]
+  return(sub_data[,.(gene_id=gene_name,type,start,end)])
+}
+
+read_spladder_mee <- function(path){
+  sub_data <- fread(path)
+  sub_data[,type:="mee"]
+  sub_data[,start:=as.integer(exon_pre_end)]
+  sub_data[,end:=as.integer(exon_aft_start)]
+  return(sub_data[,.(gene_id=gene_name,type,start,end)])
+}
+
+read_spladder_a5 <- function(path){
+  sub_data <- fread(path)
+  sub_data[,type:="a5"]
+  ranges <- apply(sub_data,1,function(x){
+    select <- c("exon_alt1_start","exon_alt1_end","exon_alt2_start","exon_alt2_end")
+    points <- x[select]
+    duplicate <- points[duplicated(points)]
+    points <- points[points!=duplicate]
+    start <- min(points)
+    end <- max(points)
+    return(c("start"=as.integer(start),"end"=as.integer(end)))
+  })
+  sub_data[,start:=ranges["start",]]
+  sub_data[,end:=ranges["end",]]
+  return(sub_data[,.(gene_id=gene_name,type,start,end)])
+}
+
+read_spladder_a3 <- function(path){
+  sub_data <- fread(path)
+  sub_data[,type:="a3"]
+  ranges <- apply(sub_data,1,function(x){
+    select <- c("exon_alt1_start","exon_alt1_end","exon_alt2_start","exon_alt2_end")
+    points <- x[select]
+    duplicate <- points[duplicated(points)]
+    points <- points[points!=duplicate]
+    start <- min(points)
+    end <- max(points)
+    return(c("start"=as.integer(start),"end"=as.integer(end)))
+  })
+  sub_data[,start:=ranges["start",]]
+  sub_data[,end:=ranges["end",]]
+  return(sub_data[,.(gene_id=gene_name,type,start,end)])
+}
+
 count_spladder <- function(data,true_data,annotation,txdb){
   #lookup lists
   diff_spliced_list <- as.list(true_data$diff_spliced)
@@ -1018,14 +1124,13 @@ count_spladder <- function(data,true_data,annotation,txdb){
   names(type_list) <- true_data$gene_id
   
   #add strand
-  data[,strand:=as.character(strand(genes(txdb)[data$gene_id]))]
+  data[,strand:=as.character(strand(genes(txdb)[data$gene_id]))]  
   
   #include in true_data?
   includes <- unique(data$type)
   nrow_true_data <- nrow(true_data)
   true_data <- true_data[type %in% includes]
   print(paste0(nrow_true_data-nrow(true_data)," genes were dropped"))
-  
   
   #gene_level
   counts <- data.table()
@@ -1046,6 +1151,81 @@ count_spladder <- function(data,true_data,annotation,txdb){
   counts_type$fp <- sum(unique_data$type_level==F)
   counts_type$fn  <- sum(true_data$diff_spliced)-counts_type$tp
   counts <- rbind(counts,counts_type)
+  
+  #location_level
+  counts_location <- data.table()
+  data[type_level==F,location_level:=F]
+  
+  #es
+  es_data <- data[type_level==T&type=="es"]
+  es_ranges <- annotation$es$genomic_ranges
+  es_ranges <- es_ranges[es_data$gene_id]
+  es_data[,location_level:=((start(es_ranges)==(start))&(end(es_ranges)==(end)))]
+  data[type_level==T&type=="es",location_level:=es_data$location_level]
+  es_data <- NULL
+  es_ranges <- NULL
+  
+  #ir
+  ir_data <- data[type_level==T&type=="ir"]
+  ir_ranges <- annotation$ir$genomic_ranges[ir_data$gene_id]
+  ir_data[,location_level:=((start(ir_ranges)==(start))&(end(ir_ranges)==(end)))]
+  data[type_level==T&type=="ir",location_level:=ir_data$location_level]
+  ir_data <- NULL
+  ir_ranges <- NULL
+  
+  #mes 
+  mes_data <- data[type_level==T&type=="mes"]
+  mes_ranges <- annotation$mes$introns
+  mes_ranges <- mes_ranges[mes_data$gene_id]
+  mes_data[,location_level:=((start(mes_ranges)==(start+1))&(end(mes_ranges)==(end-1)))]
+  data[type_level==T&type=="mes",location_level:=mes_data$location_level]
+  mes_data <- NULL
+  mes_ranges <- NULL
+  
+  #mee 
+  mee_data <- data[type_level==T&type=="mee"]
+  mee_ranges <- annotation$mee$introns
+  mee_ranges <- mee_ranges[mee_data$gene_id]
+  mee_data[,location_level:=((start(mee_ranges)==(start+1))&(end(mee_ranges)==(end-1)))]
+  data[type_level==T&type=="mee",location_level:=mee_data$location_level]
+  mee_data <- NULL
+  mee_ranges <- NULL
+  
+  #a5
+  a5_data <- data[type_level==T&type=="a5"]
+  a5_ranges <- annotation$a5$genomic_ranges[a5_data$gene_id]
+  strand_map_start = list("+"=1,"-"=0)
+  strand_map_end = list("+"=0,"-"=-1)
+  strand_start <- unlist(strand_map_start[a5_data$strand],use.names = F)
+  strand_end <- unlist(strand_map_end[a5_data$strand],use.names = F)
+  
+  a5_data[,location_level:=((start(a5_ranges)==(start+strand_start))
+                            &(end(a5_ranges)==(end+strand_end)))]
+  data[type_level==T&type=="a5",location_level:=a5_data$location_level]
+  a5_data <- NULL
+  a5_ranges <- NULL
+  
+  #a3
+  a3_data <- data[type_level==T&type=="a3"]
+  a3_ranges <- annotation$a3$genomic_ranges[a3_data$gene_id]
+  strand_map_end = list("+"=-1,"-"=0)
+  strand_map_start = list("+"=0,"-"=1)
+  strand_start <- unlist(strand_map_start[a3_data$strand],use.names = F)
+  strand_end <- unlist(strand_map_end[a3_data$strand],use.names = F)
+  
+  a3_data[,location_level:=((start(a3_ranges)==(start+strand_start))
+                            &(end(a3_ranges)==(end+strand_end)))]
+  data[type_level==T&type=="a3",location_level:=a3_data$location_level]
+  a3_data <- NULL
+  a3_ranges <- NULL
+  
+  unique_data <-  unique(data[,.(gene_id,gene_level,type_level,type,location_level,start,end)])
+  counts_location$level <- "location"
+  counts_location$tp <- sum(unique_data$location_level==T)
+  counts_location$fp <- sum(unique_data$location_level==F)
+  counts_location$fn  <- sum(true_data$diff_spliced)-counts_location$tp
+  counts <- rbind(counts,counts_location)
+  
   
   return(counts)
 }
@@ -1076,5 +1256,44 @@ read_jsplice <- function(path){
   
   
 
+  return(data)
+}
+
+############################ edgeR ############################
+
+read_edger <- function(path){
+  file <- list.files(path,pattern = "ftest.txt$")
+  if(length(file)!=1){
+    stop("No input file found!")
+  }
+  path <-file.path(path,file)
+  print(paste("Reading edge output:",path))
+  data <- fread(path)
+  return(data[,.(gene_id=GeneID,p_value=P.Value)])
+}
+
+count_edger <- function(data,true_data){
+  #lookup lists
+  diff_spliced_list <- as.list(true_data$diff_spliced)
+  names(diff_spliced_list) <- true_data$gene_id
+
+
+  #gene_level
+  counts <- data.table()
+  gene_level <-unlist(diff_spliced_list[data$gene_id],use.names = F) 
+  data[,gene_level:=gene_level]
+  unique_data <- unique(data[,.(gene_id,gene_level)])
+  counts$level <- "gene"
+  counts$tp <- sum(unique_data$gene_level==T)
+  counts$fp <- sum(unique_data$gene_level==F)
+  counts$fn  <- sum(true_data$diff_spliced)-counts$tp
+  
+  return(counts)
+}
+
+############# dexseq ################
+read_dexseq <- function(path){
+  print(paste("Reading dexseq output:",path))
+  data <- fread(path,fill = T,quote = "")
   return(data)
 }
