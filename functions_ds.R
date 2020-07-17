@@ -283,6 +283,16 @@ load_introns <- function(annotation, txdb){
                                     end = ends,
                                     names = ale_ids)
   
+  #ir - actually those are exons
+  transcript_exons <- exonsBy(txdb,by="tx",use.names=T)
+  ir_ranges <- annotation$ir$genomic_ranges
+  ir_exons <- transcript_exons[paste(names(ir_ranges),"ir",sep="_")]
+  names(ir_exons) <- gsub("_ir","",names(ir_exons))
+  
+  annotation$ir$exons <- get_introns(ir_ranges,ir_exons)
+  
+  
+  
   return(annotation)
 }
 
@@ -304,6 +314,7 @@ pre_filter_type <- function(data,true_data){
   
   #include?
   includes <- unique(data$type)
+  includes <- c(includes,"template")
   print(paste0("The known event types are: ",paste(includes,collapse = ", ")))
   nrow_data <- nrow(data)
   data <- data[real_type %in% includes]
@@ -343,6 +354,12 @@ read_ds <- function(path,method){
   if(method == "edger"){
     return(read_edger(path))
   }
+  if(method == "psisigma"){
+    return(read_psisigma(path))
+  }
+  if(method == "junctionseq"){
+    return(read_junctionseq(path))
+  }
   stop(paste0("Method '",method,"' is not supported!"))
 }
 
@@ -367,6 +384,12 @@ count_ds <- function(data,method,...){
   }
   if(method=="edger"){
     return(count_edger(data,...))
+  }
+  if(method=="psisigma"){
+    return(count_psisigma(data,...))
+  }
+  if(method == "junctionseq"){
+    return(count_junctionseq(data,...))
   }
   stop(paste0("Method '",method,"' is not supported!"))
 }
@@ -736,6 +759,7 @@ count_aspli <- function(data,true_data,annotation,txdb){
   
   #include in true_data?
   includes <- unique(data$type)
+  includes <- c(includes,"template")
   nrow_true_data <- nrow(true_data)
   true_data <- true_data[type %in% includes]
   print(paste0(nrow_true_data-nrow(true_data)," genes were dropped"))
@@ -1128,6 +1152,7 @@ count_spladder <- function(data,true_data,annotation,txdb){
   
   #include in true_data?
   includes <- unique(data$type)
+  includes <- c(includes,"template")
   nrow_true_data <- nrow(true_data)
   true_data <- true_data[type %in% includes]
   print(paste0(nrow_true_data-nrow(true_data)," genes were dropped"))
@@ -1230,6 +1255,133 @@ count_spladder <- function(data,true_data,annotation,txdb){
   return(counts)
 }
 
+################## psisigma ##############################
+
+read_psisigma <- function(path){
+  file <- list.files(path,pattern = ".txt$")
+  if(length(file)!=1){
+    stop("No/multiple input file/s found!")
+  }
+  path <-file.path(path,file)
+  print(paste("Reading PSI-SIGMA output:",path))
+  data <- fread(path)
+  
+  #rename columns
+  setnames(data,"Gene Symbol","gene_id")
+  setnames(data,"Event Type","type")
+  
+  #rename types
+  map <- list("A3SS"="a3","A5SS"="a5","IR"="ir","IR (overlapping region)"="ir",
+              "MES"="mes","SES"="es","TSS|A3SS"="a3","TSS|A5SS"="a5" )
+  data[,type:=unlist(map[type],use.names = F)]
+  
+  #parse location
+  data[,location:= gsub(".*:","",data$`Event Region`)]
+  sep <- separate(data[,.(location)],location,c("start","end"),sep="-")
+  data[,start:=as.integer(sep$start)]
+  data[,end:=as.integer(sep$end)]
+  
+  return(data[,.(gene_id,type,start,end)])
+  
+}
+
+count_psisigma <- function(data,true_data,annotation,txdb){
+  #lookup lists
+  diff_spliced_list <- as.list(true_data$diff_spliced)
+  names(diff_spliced_list) <- true_data$gene_id
+  
+  type_list <- as.list(true_data$type)
+  names(type_list) <- true_data$gene_id
+  
+  #add strand
+  data[,strand:=as.character(strand(genes(txdb)[data$gene_id]))]
+  
+  #include in true_data?
+  includes <- unique(data$type)
+  includes <- c(includes,"template")
+  nrow_true_data <- nrow(true_data)
+  true_data <- true_data[type %in% includes]
+  print(paste0(nrow_true_data-nrow(true_data)," genes were dropped"))
+  
+  #gene_level
+  counts <- data.table()
+  gene_level <-unlist(diff_spliced_list[data$gene_id],use.names = F) 
+  data[,gene_level:=gene_level]
+  unique_data <- unique(data[,.(gene_id,gene_level)])
+  counts$level <- "gene"
+  counts$tp <- sum(unique_data$gene_level)
+  counts$fp <- sum(unique_data$gene_level==F)
+  counts$fn  <- sum(true_data$diff_spliced)-counts$tp
+  
+  #type_level
+  counts_type <- data.table() 
+  data[,type_level := gene_level&real_type==type]
+  unique_data <- unique(data[,.(gene_id,gene_level,type_level,type)])
+  counts_type$level <- "type"
+  counts_type$tp <- sum(unique_data$type_level==T)
+  counts_type$fp <- sum(unique_data$type_level==F)
+  counts_type$fn  <- sum(true_data$diff_spliced)-counts_type$tp
+  counts <- rbind(counts,counts_type)
+  
+  #location_level
+  counts_location <- data.table()
+  data[type_level==F,location_level:=F]
+  
+  #es
+  es_data <- data[type_level==T&type=="es"]
+  es_ranges <- annotation$es$introns
+  es_ranges <- es_ranges[es_data$gene_id]
+  es_data[,location_level:=((start(es_ranges)==(start))&(end(es_ranges)==(end)))]
+  data[type_level==T&type=="es",location_level:=es_data$location_level]
+  es_data <- NULL
+  es_ranges <- NULL
+  
+  #ir
+  ir_data <- data[type_level==T&type=="ir"]
+  ir_ranges <- annotation$ir$exons[ir_data$gene_id]
+  ir_data[,location_level:=((start(ir_ranges)==(start))&(end(ir_ranges)==(end)))]
+  data[type_level==T&type=="ir",location_level:=ir_data$location_level]
+  ir_data <- NULL
+  ir_ranges <- NULL
+  
+  #mes 
+  mes_data <- data[type_level==T&type=="mes"]
+  mes_ranges <- annotation$mes$introns
+  mes_ranges <- mes_ranges[mes_data$gene_id]
+  mes_data[,location_level:=((start(mes_ranges)==(start))&(end(mes_ranges)==(end)))]
+  data[type_level==T&type=="mes",location_level:=mes_data$location_level]
+  mes_data <- NULL
+  mes_ranges <- NULL
+  
+  #a5
+  a5_data <- data[type_level==T&type=="a5"]
+  a5_ranges <- annotation$a5$introns
+  a5_ranges <- a5_ranges[a5_data$gene_id]
+  a5_data[,location_level:=((start(a5_ranges)==(start))&(end(a5_ranges)==(end)))]
+  data[type_level==T&type=="a5",location_level:=a5_data$location_level]
+  a5_data <- NULL
+  a5_ranges <- NULL
+  
+  #a3
+  a3_data <- data[type_level==T&type=="a3"]
+  a3_ranges <- annotation$a3$introns
+  a3_ranges <- a3_ranges[a3_data$gene_id]
+  a3_data[,location_level:=((start(a3_ranges)==(start))&(end(a3_ranges)==(end)))]
+  data[type_level==T&type=="a3",location_level:=a3_data$location_level]
+  a3_data <- NULL
+  a3_ranges <- NULL
+  
+  unique_data <-  unique(data[,.(gene_id,gene_level,type_level,type,location_level,start,end)])
+  counts_location$level <- "location"
+  counts_location$tp <- sum(unique_data$location_level==T)
+  counts_location$fp <- sum(unique_data$location_level==F)
+  counts_location$fn  <- sum(true_data$diff_spliced)-counts_location$tp
+  counts <- rbind(counts,counts_location)
+  
+  return(counts)
+}
+
+
 ################# jsplice ###########################
 
 read_jsplice <- function(path){
@@ -1278,6 +1430,39 @@ count_edger <- function(data,true_data){
   names(diff_spliced_list) <- true_data$gene_id
 
 
+  #gene_level
+  counts <- data.table()
+  gene_level <-unlist(diff_spliced_list[data$gene_id],use.names = F) 
+  data[,gene_level:=gene_level]
+  unique_data <- unique(data[,.(gene_id,gene_level)])
+  counts$level <- "gene"
+  counts$tp <- sum(unique_data$gene_level==T)
+  counts$fp <- sum(unique_data$gene_level==F)
+  counts$fn  <- sum(true_data$diff_spliced)-counts$tp
+  
+  return(counts)
+}
+
+
+######################## junctionseq #######################
+
+read_junctionseq <- function(path){
+  file <- list.files(path,pattern = "results.txt$")
+  if(length(file)!=1){
+    stop("No input file found!")
+  }
+  path <-file.path(path,file)
+  print(paste("Reading edge output:",path))
+  data <- fread(path)
+  return(data[,.(gene_id=geneID,p_value=pvalue)])
+}
+
+count_junctionseq <- function(data,true_data){
+  #lookup lists
+  diff_spliced_list <- as.list(true_data$diff_spliced)
+  names(diff_spliced_list) <- true_data$gene_id
+  
+  
   #gene_level
   counts <- data.table()
   gene_level <-unlist(diff_spliced_list[data$gene_id],use.names = F) 

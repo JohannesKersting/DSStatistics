@@ -14,6 +14,7 @@ library(corrplot)
 library(tidyr)
 library(GenomicRanges)
 library(GenomicFeatures)
+library(stringr)
 ```
 Get functions
 ```{r}
@@ -28,14 +29,19 @@ Read ground truth info
 ```{r}
 info <- read_info("C:/Users/kerst/Desktop/MP/Task5/input/sim_tx_info.txt")
 info[type=="template"]$diff_spliced <- F
+print("Type distribution:")
 table(info$type)
+print("Differentially spliced  distribution:")
+table(info$diff_spliced)
+print("Differentially spliced and type distribution:")
+table(info$type,info$diff_spliced)
 ```
 Read ground truth annotation
 ```{r}
 annotation <- read_annotation("C:/Users/kerst/Desktop/MP/Task5/input/event_annotation.tsv")
 ```
 
-Load introns (because evntpointer uses intronic coordinates :-/ )
+Load introns (because evntpointer uses intronic coordinates :-/ ) (and exons for ir)
 ```{r}
 annotation <- load_introns(annotation,txdb)
 ```
@@ -113,6 +119,28 @@ edger <- read_ds("C:/Users/kerst/Desktop/MP/Task5/edgeR","edger")
 edger_counts <- count_ds(edger,"edger",info)
 ```
 
+Read PSI-SIGMA
+```{r}
+source("functions_ds.R")
+psisigma <- read_ds("C:/Users/kerst/Desktop/MP/Task5/PSI-SIGMA","psisigma")
+psisigma <- pre_filter_type(psisigma,info)
+psisigma_counts <- count_ds(psisigma,"psisigma",info,annotation,txdb)
+print("Type table")
+table(psisigma$type,psisigma$real_type)
+print("Type table: diff spliced")
+table(psisigma[gene_level==T]$type,psisigma[gene_level==T]$real_type)
+print("Type table: location correct")
+table(psisigma[location_level==T]$type,psisigma[location_level==T]$real_type)
+
+```
+Read junctinseq
+```{r}
+source("functions_ds.R")
+junctionseq <- read_ds("C:/Users/kerst/Desktop/MP/Task5/Junction_Seq","junctionseq")
+junctionseq_counts <- count_ds(junctionseq,"junctionseq",info)
+```
+
+
 Read dexseq
 ```{r}
 source("functions_ds.R")
@@ -126,6 +154,36 @@ Read jsplice
 source("functions_ds.R")
 jsplice <- read_ds("C:/Users/kerst/Desktop/MP/Task5/jSplice","jsplice")
 table(jsplice$type)
+```
+Combine results
+```{r}
+combined <- rbindlist(list("EdgeR" = edger_counts,
+                           "Majiq"=majiq_counts,
+                           "Cash"=cash_counts,
+                           "ASpli"=aspli_counts,
+                           "EventPointer"=eventpointer_counts,
+                           "SplAdder"=spladder_counts,
+                           "PSI-SIGMA"=psisigma_counts,
+                           "JunctionSeq"=junctionseq_counts),idcol="Tool")
+```
+Plot results
+```{r}
+combined$level <- factor(sapply(combined$level,str_to_title), levels=c('Gene','Type','Location'))
+ggplot(combined,aes(x=tp/(tp+fp),y=tp/(tp+fn),color=Tool))+
+  geom_point(size = 3)+
+  xlim(0,1)+
+  ylim(0,1)+
+  facet_grid(~level)+
+  coord_fixed()+
+  labs(title = "Multi level comparison of differential splicing tools",
+       x="Precision",
+       y="Recall")+
+  theme_bw()+
+   theme(
+   strip.background = element_rect(
+     color="white", fill="white",linetype="blank"
+     )
+   )
 ```
 
 Simulate outputs
