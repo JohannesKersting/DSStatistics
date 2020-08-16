@@ -32,6 +32,7 @@ The names are used to call the right parser internally.
 plots_ds.Rmd can be used to visualize the results.
 
 ## Required libraries
+The scripts utilize the following R libraries:
 - data.table
 - ggplot2
 - tidyr
