@@ -22,6 +22,7 @@ For processing the different tool outputs:
 - count_ds(read_ds_output,tool,...): Takes a parsed tool output (potentially filtered by pre_filter_type) to count tp, fp, fn for three different levels, which get returned as a data.table.
 
 Supported tool names for the functions read_ds and count_ds are:
+
 cash, eventpointer, aspli, majiq, spladder, edger, psisigma and junctionseq
 
 The names are used to call the right parser internally.
