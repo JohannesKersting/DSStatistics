@@ -31,3 +31,11 @@ The names are used to call the right parser internally.
 ## Plotting
 plots_ds.Rmd can be used to visualize the results.
 
+## Required libraries
+- data.table
+- ggplot2
+- tidyr
+- GenomicRanges
+- GenomicFeatures
+- stringr
+
